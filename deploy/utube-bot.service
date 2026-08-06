@@ -1,0 +1,25 @@
+[Unit]
+Description=utube_bot Telegram torrent bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=utubebot
+Group=utubebot
+WorkingDirectory=/opt/utube_bot
+EnvironmentFile=/opt/utube_bot/.env
+ExecStart=/opt/utube_bot/.venv/bin/python -m telegram_bot.main
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=65536
+
+# Basic hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/utube_bot/downloads /opt/utube_bot/sessions
+
+[Install]
+WantedBy=multi-user.target
