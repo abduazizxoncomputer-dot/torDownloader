@@ -28,7 +28,7 @@ adduser --system --group --home /opt/utube_bot utubebot
 
 ```sh
 cd /opt
-git clone https://github.com/<USERNAME>/<REPO>.git utube_bot
+git clone https://github.com/abduazizxoncomputer-dot/torDownloader.git utube_bot
 cd utube_bot
 ```
 
