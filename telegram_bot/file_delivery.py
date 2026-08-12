@@ -1,7 +1,6 @@
 import asyncio
 import logging
-import os
-import shutil
+import re
 from pathlib import Path
 
 from telegram.constants import ParseMode
@@ -110,14 +109,58 @@ def split_file(path: Path, chunk_size: int):
     return parts
 
 
-def _join_instructions(part_names):
-    windows_cmd = "copy /b " + "+".join(part_names) + f" {part_names[0].rsplit('.part', 1)[0]}"
-    unix_cmd = "cat " + " ".join(part_names) + f" > {part_names[0].rsplit('.part', 1)[0]}"
+_TITLE_CUT_PATTERN = re.compile(
+    r'(?<!\d)(19|20)\d{2}(?!\d)'
+    r'|\b(4k|2160p|1080p|720p|480p|360p|blu-?ray|brrip|bdrip|webrip|web-?dl|hdtv|dvdrip|dvdscr'
+    r'|hdcam|hdrip|hqcam|telesync|x264|x265|h\.?264|h\.?265|hevc|xvid|avc|dual[.\-]?audio'
+    r'|aac|ac3|dts|10bit|8bit|6ch|5\.1|7\.1|repack|proper|extended|remastered|uncut|multi|nf|amzn|hulu|dsnp)\b',
+    re.IGNORECASE,
+)
+
+
+def _extract_title(filename, strip_text=None):
+    """Fayl nomidan toza sarlavhani ajratib oladi.
+
+    Agar `strip_text` berilgan bo'lsa (foydalanuvchi jobning birinchi fayli
+    uchun qaysi qismni olib tashlashni aytgan bo'lsa), aynan o'sha matn
+    olib tashlanadi — bu matn odatda bir xil release-teg bo'lgani uchun
+    jobning qolgan fayllariga ham qayta so'ramasdan qo'llanadi.
+
+    Aks holda, torrent-uslubidagi nomdan (nuqta bilan ajratilgan, yil/sifat/
+    manba/kodek teglari bilan to'la) birinchi uchragan yil (19xx/20xx) yoki
+    release-teg (720p, BluRay, x264 va h.k.) dan oldingi qismni oladi. Misol:
+    'The.Legend.of.Korra.S01E01-E02.720p.HDTV.x264-HWE.mkv' -> 'The.Legend.of.Korra.S01E01-E02'."""
+    stem = Path(filename).stem
+    if strip_text:
+        return stem.replace(strip_text, '').rstrip('. -_') or stem
+    match = _TITLE_CUT_PATTERN.search(stem)
+    title = stem[:match.start()] if match else stem
+    return title.rstrip('. -_') or stem
+
+
+def _build_caption(filename, part_label=None, title_strip=None):
+    title = _extract_title(filename, strip_text=title_strip)
+    if part_label:
+        title = f"{title} — {part_label}"
     return (
-        "⚠️ Fayl hajmi kattaligi sabab qismlarga bo'lindi. Barcha qismlarni yuklab, "
-        "bitta papkaga joylab, birlashtiring:\n\n"
-        f"Windows:\n<code>{windows_cmd}</code>\n\n"
-        f"Linux/macOS:\n<code>{unix_cmd}</code>"
+        f"<b>{title}</b>\n\n"
+        f"<b>Telegram bot to order movie</b>\n@orderMovies_bot\n\n"
+        f'<b><a href="{config.ORDER_CHANNEL_URL}">ORDERED MOVIES</a></b>'
+    )
+
+
+def _join_instructions(original_name, part_names):
+    windows_cmd = "copy /b " + "+".join(part_names) + f" \"{original_name}\""
+    unix_cmd = "cat " + " ".join(f'"{p}"' for p in part_names) + f' > "{original_name}"'
+    return (
+        f"🧩 <b>{original_name}</b> — {len(part_names)} qismga bo'lindi.\n\n"
+        "Bitta faylga birlashtirish uchun:\n\n"
+        "1️⃣ Yuqoridagi barcha qismlarni (part001, part002, ...) yuklab oling.\n"
+        "2️⃣ Hammasini bitta papkaga joylang.\n"
+        "3️⃣ Shu papkada terminal/buyruqlar satrini ochib, quyidagini bajaring:\n\n"
+        f"🪟 <b>Windows</b> (cmd / PowerShell):\n<code>{windows_cmd}</code>\n\n"
+        f"🐧 <b>Linux / macOS</b> (terminal):\n<code>{unix_cmd}</code>\n\n"
+        f"✅ Natijada <b>{original_name}</b> nomli, asl videoning o'zi paydo bo'ladi."
     )
 
 
@@ -133,18 +176,22 @@ async def _send_one(bot, chat_id, path: Path, caption=None):
         )
 
 
-async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporter):
+async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporter, title_strip=None):
     size = path.stat().st_size
     reporter.begin_file(path.name, size)
 
     if size <= config.BOT_UPLOAD_LIMIT_BYTES:
-        await _send_one(bot, chat_id, path)
+        await _send_one(bot, chat_id, path, caption=_build_caption(path.name, title_strip=title_strip))
         reporter.finish_file()
         return
 
     if userbot.is_enabled() and size <= config.USERBOT_UPLOAD_LIMIT_BYTES:
         logger.info("Relaying %s (%.1f MB) via userbot", path, size / 1024 / 1024)
-        await userbot.relay_large_file(bot, chat_id, path, progress=reporter.report)
+        await userbot.relay_large_file(
+            bot, chat_id, path,
+            caption=_build_caption(path.name, title_strip=title_strip),
+            progress=reporter.report,
+        )
         reporter.finish_file()
         return
 
@@ -152,28 +199,35 @@ async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporte
     parts = split_file(path, config.CHUNK_SIZE_BYTES)
     part_names = [p.name for p in parts]
     for i, part in enumerate(parts, start=1):
-        caption = f"{path.name} — qism {i}/{len(parts)}"
-        if i == len(parts):
-            caption += "\n\n" + _join_instructions(part_names)
+        caption = _build_caption(path.name, part_label=f"qism {i}/{len(parts)}", title_strip=title_strip)
         reporter.begin_file(f"{path.name} ({i}/{len(parts)})", part.stat().st_size)
         await _send_one(bot, chat_id, part, caption=caption)
         reporter.finish_file()
         part.unlink(missing_ok=True)
 
+    await bot.send_message(
+        chat_id=chat_id,
+        text=_join_instructions(path.name, part_names),
+        parse_mode=ParseMode.HTML,
+    )
 
-async def deliver_job_files(bot, chat_id, message_id, save_path):
-    files = find_downloaded_files(save_path)
-    if not files:
-        raise RuntimeError("Yuklangan fayllar topilmadi.")
 
-    total_bytes = sum(p.stat().st_size for p in files)
-    reporter = UploadProgressReporter(bot, chat_id, message_id, total_bytes)
+async def deliver_single_file(bot, chat_id, message_id, path: Path, title_strip=None):
+    """Bitta faylni yuboradi va muvaffaqiyatli yetkazilgach uni (va endi
+    bo'sh qolgan job papkasini) serverdan o'chiradi — /fayllar ro'yxatidan
+    bitta faylni tanlab qayta yuborishda ishlatiladi."""
+    size = path.stat().st_size
+    reporter = UploadProgressReporter(bot, chat_id, message_id, size)
     reporter.start()
     try:
-        for file_path in files:
-            await deliver_file(bot, chat_id, file_path, reporter)
+        await deliver_file(bot, chat_id, path, reporter, title_strip=title_strip)
     finally:
         await reporter.stop()
 
     if not config.KEEP_FILES_AFTER_SEND:
-        shutil.rmtree(save_path, ignore_errors=True)
+        path.unlink(missing_ok=True)
+        try:
+            path.parent.rmdir()
+        except OSError:
+            pass
+

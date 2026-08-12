@@ -13,7 +13,7 @@ ssh root@SERVER_IP
 
 ```sh
 apt update && apt upgrade -y
-apt install -y python3-venv python3-pip git ufw
+apt install -y python3-venv python3-pip ufw
 ```
 
 ## 2. Bot uchun alohida (root bo'lmagan) foydalanuvchi yaratish
@@ -24,12 +24,28 @@ Botni root sifatida ishlatish xavfli — alohida xizmat foydalanuvchisi yaratami
 adduser --system --group --home /opt/utube_bot utubebot
 ```
 
-## 3. Kodni klonlash
+## 3. Kodni yuborish (GitHub'siz, to'g'ridan-to'g'ri scp orqali)
+
+O'zingizning kompyuteringizda (loyiha papkasida), serverga yuborishdan oldin
+keraksiz narsalarni (`.git`, `.venv`, `downloads`, sessiya fayllari, `.env`)
+chetlab o'tib arxiv yasaymiz:
 
 ```sh
-cd /opt
-git clone https://github.com/abduazizxoncomputer-dot/torDownloader.git utube_bot
-cd utube_bot
+cd "D:/Loyihalar/utube_bot"
+tar --exclude=.git --exclude=.venv --exclude=__pycache__ \
+    --exclude=downloads --exclude=.env \
+    --exclude=sessions/*.session --exclude=sessions/*.session-journal \
+    -czf utube_bot.tar.gz .
+scp utube_bot.tar.gz root@SERVER_IP:/tmp/
+```
+
+Keyin serverda:
+
+```sh
+mkdir -p /opt/utube_bot
+tar -xzf /tmp/utube_bot.tar.gz -C /opt/utube_bot
+rm /tmp/utube_bot.tar.gz
+cd /opt/utube_bot
 ```
 
 ## 4. Virtual muhit va bog'liqliklar
@@ -117,9 +133,13 @@ moslashtiring: `BASE_PORT` dan `BASE_PORT + PORT_POOL_SIZE - 1` gacha.)
 
 ## Yangilash (keyingi deploylar)
 
+Kodda o'zgarish qilganingizdan so'ng, mahalliy kompyuteringizda 3-bosqichdagi
+`tar` + `scp` buyruqlarini qayta bajaring, so'ng serverda:
+
 ```sh
+tar -xzf /tmp/utube_bot.tar.gz -C /opt/utube_bot
+chown -R utubebot:utubebot /opt/utube_bot
 cd /opt/utube_bot
-sudo -u utubebot git pull
 sudo -u utubebot .venv/bin/pip install -r requirements-bot.txt
 systemctl restart utube-bot
 ```

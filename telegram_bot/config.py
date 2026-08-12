@@ -50,8 +50,11 @@ STORAGE_CHAT_ID = _env_int('STORAGE_CHAT_ID', 0) or None
 
 USERBOT_ENABLED = bool(API_ID and API_HASH and STORAGE_CHAT_ID)
 
-# Plain Bot API upload cap.
-BOT_UPLOAD_LIMIT_MB = _env_int('BOT_UPLOAD_LIMIT_MB', 45)
+# Plain Bot API upload cap. A Local Bot API Server lets the bot's own token
+# push files up to ~1900MB directly, with no userbot relay needed — so raise
+# this cap to match whenever one is configured.
+_DEFAULT_BOT_UPLOAD_LIMIT_MB = 1900 if LOCAL_BOT_API_BASE_URL else 45
+BOT_UPLOAD_LIMIT_MB = _env_int('BOT_UPLOAD_LIMIT_MB', _DEFAULT_BOT_UPLOAD_LIMIT_MB)
 BOT_UPLOAD_LIMIT_BYTES = BOT_UPLOAD_LIMIT_MB * 1024 * 1024
 
 # Files above this are sent via the userbot relay instead of a direct bot upload.
@@ -65,6 +68,14 @@ CHUNK_SIZE_MB = _env_int('CHUNK_SIZE_MB', _DEFAULT_CHUNK_MB)
 CHUNK_SIZE_BYTES = CHUNK_SIZE_MB * 1024 * 1024
 
 PROGRESS_EDIT_INTERVAL_SECONDS = _env_int('PROGRESS_EDIT_INTERVAL_SECONDS', 4)
+
+# Link shown as "ORDERED MOVIES" in the caption attached to every delivered file.
+ORDER_CHANNEL_URL = os.getenv('ORDER_CHANNEL_URL', 'https://t.me/Cart_In_Eng').strip()
+
+# Yuklab olish tugagach, foydalanuvchidan sarlavhadan olib tashlanadigan qismni
+# so'raganda, javob kutiladigan maksimal vaqt. Shu vaqt ichida javob kelmasa,
+# avtomatik (regex asosidagi) nom tozalashga qaytiladi.
+TITLE_PROMPT_TIMEOUT_SECONDS = _env_int('TITLE_PROMPT_TIMEOUT_SECONDS', 180)
 
 DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 SESSION_DIR.mkdir(parents=True, exist_ok=True)

@@ -52,9 +52,12 @@ def build_application():
     application.add_handler(CommandHandler('start', handlers.start_command))
     application.add_handler(CommandHandler('help', handlers.help_command))
     application.add_handler(CommandHandler('status', handlers.status_command))
+    application.add_handler(CommandHandler('fayllar', handlers.files_command))
+    application.add_handler(CommandHandler('skip', handlers.title_strip_skip))
     application.add_handler(MessageHandler(filters.Regex(r'(?i)^magnet:'), handlers.magnet_handler))
     application.add_handler(MessageHandler(filters.Document.FileExtension('torrent'), handlers.torrent_file_handler))
     application.add_handler(CallbackQueryHandler(handlers.button_callback))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.title_strip_reply))
 
     return application
 
