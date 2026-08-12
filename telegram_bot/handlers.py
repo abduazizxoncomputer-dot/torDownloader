@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import shutil
+import time
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
@@ -183,6 +184,69 @@ def _wipe_all_downloads(manager):
             chat_folder.rmdir()
         except OSError:
             pass
+
+
+async def cleanup_stale_files(context: ContextTypes.DEFAULT_TYPE):
+    """Vaqti-vaqti bilan (JobQueue orqali) ishga tushib, STALE_FILE_HOURS
+    soatdan beri hech qanday fayli tegilmagan (yuborilmagan/o'chirilmagan)
+    job papkalarini avtomatik o'chiradi va egasiga xabar beradi. Faol
+    (hozir yuklanayotgan) joblarga tegilmaydi."""
+    manager = context.application.bot_data['manager']
+    active_ids = manager.all_job_ids()
+    cutoff = time.time() - config.STALE_FILE_HOURS * 3600
+
+    if not config.DOWNLOAD_DIR.exists():
+        return
+
+    for chat_folder in config.DOWNLOAD_DIR.iterdir():
+        if not chat_folder.is_dir() or chat_folder.name == 'incoming':
+            continue
+        try:
+            chat_id = int(chat_folder.name)
+        except ValueError:
+            continue
+
+        removed_count = 0
+        removed_bytes = 0
+        for job_folder in chat_folder.iterdir():
+            if not job_folder.is_dir() or job_folder.name in active_ids:
+                continue
+            files = [f for f in job_folder.rglob('*') if f.is_file()]
+            if not files:
+                shutil.rmtree(job_folder, ignore_errors=True)
+                continue
+            newest_mtime = max(f.stat().st_mtime for f in files)
+            if newest_mtime > cutoff:
+                continue
+            for f in files:
+                try:
+                    removed_bytes += f.stat().st_size
+                except OSError:
+                    pass
+            shutil.rmtree(job_folder, ignore_errors=True)
+            removed_count += 1
+
+        try:
+            chat_folder.rmdir()
+        except OSError:
+            pass
+
+        if removed_count:
+            logger.info(
+                "Auto-cleaned %d stale folder(s) (%s) for chat %s (older than %dh)",
+                removed_count, human_size(removed_bytes), chat_id, config.STALE_FILE_HOURS,
+            )
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=(
+                        f"🗑 {config.STALE_FILE_HOURS} soatdan beri yuborilmagan/o'chirilmagan "
+                        f"{removed_count} ta fayl ({human_size(removed_bytes)}) serverdan "
+                        "avtomatik o'chirildi."
+                    ),
+                )
+            except Exception:
+                logger.exception("Failed to notify chat %s about stale cleanup", chat_id)
 
 
 async def clearall_command(update: Update, context: ContextTypes.DEFAULT_TYPE):

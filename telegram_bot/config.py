@@ -78,6 +78,11 @@ ADMIN_CHAT_IDS = {
     int(x) for x in os.getenv('ADMIN_CHAT_IDS', '').split(',') if x.strip()
 }
 
+# Fayl(lar) shuncha soatdan beri tegilmasa (yuborilmasa/o'chirilmasa),
+# server o'zi avtomatik o'chirib tashlaydi. Faol yuklashlarga tegilmaydi.
+STALE_FILE_HOURS = _env_int('STALE_FILE_HOURS', 12)
+STALE_CLEANUP_INTERVAL_SECONDS = _env_int('STALE_CLEANUP_INTERVAL_SECONDS', 3600)
+
 # Yuklab olish tugagach, foydalanuvchidan sarlavhadan olib tashlanadigan qismni
 # so'raganda, javob kutiladigan maksimal vaqt. Shu vaqt ichida javob kelmasa,
 # avtomatik (regex asosidagi) nom tozalashga qaytiladi.

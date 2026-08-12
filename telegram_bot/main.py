@@ -60,6 +60,19 @@ def build_application():
     application.add_handler(CallbackQueryHandler(handlers.button_callback))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.title_strip_reply))
 
+    if application.job_queue is not None:
+        application.job_queue.run_repeating(
+            handlers.cleanup_stale_files,
+            interval=config.STALE_CLEANUP_INTERVAL_SECONDS,
+            first=300,
+            name='stale_file_cleanup',
+        )
+    else:
+        logger.warning(
+            "JobQueue mavjud emas — %d soatlik avtomatik fayl tozalash o'chirilgan.",
+            config.STALE_FILE_HOURS,
+        )
+
     return application
 
 
