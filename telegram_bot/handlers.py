@@ -140,6 +140,79 @@ async def files_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
 
 
+def _scan_deletable_downloads(manager):
+    """Faol bo'lmagan job papkalarini sanaydi: (papkalar soni, jami hajm baytda).
+    Barcha chatlar bo'yicha, /clearall preview'i uchun."""
+    active_ids = manager.all_job_ids()
+    count = 0
+    total_bytes = 0
+    if config.DOWNLOAD_DIR.exists():
+        for chat_folder in config.DOWNLOAD_DIR.iterdir():
+            if not chat_folder.is_dir() or chat_folder.name == 'incoming':
+                continue
+            for job_folder in chat_folder.iterdir():
+                if not job_folder.is_dir() or job_folder.name in active_ids:
+                    continue
+                count += 1
+                for f in job_folder.rglob('*'):
+                    if f.is_file():
+                        try:
+                            total_bytes += f.stat().st_size
+                        except OSError:
+                            pass
+    return count, total_bytes
+
+
+def _wipe_all_downloads(manager):
+    """_scan_deletable_downloads aniqlagan hamma narsani o'chiradi — faol
+    yuklashlar (istalgan chatdagi) tegilmaydi. 'incoming/' ham tozalanadi."""
+    active_ids = manager.all_job_ids()
+    if not config.DOWNLOAD_DIR.exists():
+        return
+    for chat_folder in config.DOWNLOAD_DIR.iterdir():
+        if not chat_folder.is_dir():
+            continue
+        if chat_folder.name == 'incoming':
+            shutil.rmtree(chat_folder, ignore_errors=True)
+            chat_folder.mkdir(exist_ok=True)
+            continue
+        for job_folder in chat_folder.iterdir():
+            if job_folder.is_dir() and job_folder.name not in active_ids:
+                shutil.rmtree(job_folder, ignore_errors=True)
+        try:
+            chat_folder.rmdir()
+        except OSError:
+            pass
+
+
+async def clearall_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin-only: barcha chatlarning saqlangan (faol bo'lmagan) fayllarini
+    o'chirish uchun tasdiqlash so'raydi."""
+    chat_id = update.effective_chat.id
+    if chat_id not in config.ADMIN_CHAT_IDS:
+        await update.message.reply_text("⛔ Bu buyruq faqat admin uchun.")
+        return
+
+    manager = _manager(context)
+    count, total_bytes = _scan_deletable_downloads(manager)
+    if count == 0:
+        await update.message.reply_text("📁 O'chiriladigan hech narsa yo'q.")
+        return
+
+    keyboard = InlineKeyboardMarkup([[
+        InlineKeyboardButton("⚠️ Ha, HAMMASINI o'chir", callback_data="clearall:confirm"),
+        InlineKeyboardButton("Bekor qilish", callback_data="clearall:cancel"),
+    ]])
+    await update.message.reply_text(
+        "⚠️ <b>Diqqat!</b> Bu <b>BARCHA</b> foydalanuvchilarning serverda saqlangan "
+        "fayllarini o'chiradi (faol yuklashlarga tegilmaydi).\n\n"
+        f"📁 {count} ta papka, jami {human_size(total_bytes)}.\n\n"
+        "Rostdan ham davom etaymi?",
+        reply_markup=keyboard,
+        parse_mode=ParseMode.HTML,
+    )
+
+
 async def magnet_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await _start_job(update, context, update.message.text.strip(), is_magnet=True)
 
@@ -314,6 +387,22 @@ async def _refresh_files_list_message(query, context, chat_id):
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     action, _, payload = query.data.partition(':')
+
+    if action == 'clearall':
+        chat_id = query.message.chat_id
+        if chat_id not in config.ADMIN_CHAT_IDS:
+            await query.answer("⛔ Ruxsat yo'q.", show_alert=True)
+            return
+        if payload == 'cancel':
+            await query.answer("Bekor qilindi.")
+            await query.edit_message_text("Bekor qilindi.")
+            return
+        manager = _manager(context)
+        count, total_bytes = _scan_deletable_downloads(manager)
+        _wipe_all_downloads(manager)
+        await query.answer("Hammasi o'chirildi.")
+        await query.edit_message_text(f"✅ {count} ta papka o'chirildi, {human_size(total_bytes)} bo'shatildi.")
+        return
 
     if action == 'delfile':
         chat_id = query.message.chat_id

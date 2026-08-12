@@ -72,6 +72,12 @@ PROGRESS_EDIT_INTERVAL_SECONDS = _env_int('PROGRESS_EDIT_INTERVAL_SECONDS', 4)
 # Link shown as "ORDERED MOVIES" in the caption attached to every delivered file.
 ORDER_CHANNEL_URL = os.getenv('ORDER_CHANNEL_URL', 'https://t.me/Cart_In_Eng').strip()
 
+# Chat/user IDs allowed to run admin-only commands (e.g. /clearall, which
+# wipes DOWNLOAD_DIR for every chat, not just the caller's own).
+ADMIN_CHAT_IDS = {
+    int(x) for x in os.getenv('ADMIN_CHAT_IDS', '').split(',') if x.strip()
+}
+
 # Yuklab olish tugagach, foydalanuvchidan sarlavhadan olib tashlanadigan qismni
 # so'raganda, javob kutiladigan maksimal vaqt. Shu vaqt ichida javob kelmasa,
 # avtomatik (regex asosidagi) nom tozalashga qaytiladi.

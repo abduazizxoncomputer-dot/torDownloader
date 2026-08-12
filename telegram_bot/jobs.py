@@ -78,5 +78,8 @@ class DownloadManager:
     def jobs_for_chat(self, chat_id):
         return [job for job in self._jobs.values() if job.chat_id == chat_id]
 
+    def all_job_ids(self):
+        return set(self._jobs.keys())
+
     def has_active_job(self, chat_id):
         return any(not job.done for job in self.jobs_for_chat(chat_id))
