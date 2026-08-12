@@ -52,24 +52,32 @@ class UploadProgressReporter:
         self._current_done = 0
         self._current_total = 0
 
+    async def _render(self):
+        done = self._sent_bytes + self._current_done
+        text = format_upload_progress(self._current_name or 'Fayl', done, self._total_bytes)
+        if text == self._last_text:
+            return
+        self._last_text = text
+        try:
+            await self._bot.edit_message_text(
+                chat_id=self._chat_id,
+                message_id=self._message_id,
+                text=text,
+                parse_mode=ParseMode.HTML,
+            )
+        except BadRequest as exc:
+            if 'not modified' not in str(exc).lower():
+                logger.warning("Failed to edit upload progress message: %s", exc)
+
     async def _tick(self):
+        # Bot API katta fayllarni bittada yuboradi (oraliq progress callback
+        # bermaydi) — agar fayl navbatdagi 4 soniyalik tikdan oldin tugab
+        # ketsa, foydalanuvchi hech qanday progress ko'rmay qoladi. Shuning
+        # uchun har bir fayl boshlanishi bilanoq darhol bir marta chizamiz.
+        await self._render()
         while True:
             await asyncio.sleep(self._interval)
-            done = self._sent_bytes + self._current_done
-            text = format_upload_progress(self._current_name or 'Fayl', done, self._total_bytes)
-            if text == self._last_text:
-                continue
-            self._last_text = text
-            try:
-                await self._bot.edit_message_text(
-                    chat_id=self._chat_id,
-                    message_id=self._message_id,
-                    text=text,
-                    parse_mode=ParseMode.HTML,
-                )
-            except BadRequest as exc:
-                if 'not modified' not in str(exc).lower():
-                    logger.warning("Failed to edit upload progress message: %s", exc)
+            await self._render()
 
     def start(self):
         self._task = asyncio.create_task(self._tick())

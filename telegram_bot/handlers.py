@@ -451,6 +451,11 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await deliver_single_file(
                     context.bot, chat_id, query.message.message_id, file_path, title_strip=title_strip
                 )
+            if all_files:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=f"📦 {len(all_files)} ta fayl yuborildi.",
+                )
         else:
             job_id, _, index_str = payload.partition(':')
             file_path = _resolve_file(chat_dir, job_id, index_str)
