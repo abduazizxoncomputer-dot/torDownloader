@@ -19,13 +19,41 @@ logger = logging.getLogger(__name__)
 # chat_id -> Future kutayotgan "nomdan nima olib tashlansin" javobi uchun.
 _pending_title_prompts: dict = {}
 
-WELCOME = (
-    "Salom! Men torrent yuklab beruvchi botman.\n\n"
-    "Menga magnet link yoki .torrent fayl yuboring — men uni serverga yuklab, "
-    "sizga qaytarib beraman (katta fayllar avtomatik qismlarga bo'linadi).\n\n"
-    "/status — aktiv yuklashlar ro'yxati\n"
-    "/fayllar — serverda saqlangan fayllar ro'yxati (o'chirish / qayta yuborish)"
-)
+def _build_welcome_text(chat_id):
+    text = (
+        "🎬 <b>Salom! Men torrent yuklab beruvchi botman.</b>\n\n"
+        "📥 <b>Qanday ishlayman:</b>\n"
+        "1️⃣ Menga magnet-link yoki <code>.torrent</code> fayl yuboring.\n"
+        "2️⃣ Torrentni serverga yuklab olaman — progress-bar bilan kuzatib turasiz "
+        "(⏸ Pauza / ▶️ Davom / ⏹ To'xtatish tugmalari mavjud).\n"
+        "3️⃣ Yuklab bo'lgach, fayl nomidan olib tashlanadigan keraksiz qismni "
+        "(masalan <code>720p.HDTV.x264-HWE</code>) so'rayman — javobingiz bir nechta "
+        "qism (epizod) bo'lsa, barchasiga qayta so'ramasdan qo'llanadi. "
+        "O'zgartirmasdan davom etish uchun /skip yuboring.\n"
+        "4️⃣ Har bir faylni sizga alohida, o'z progress-bari bilan yuboraman va "
+        "muvaffaqiyatli yetkazilgach serverdan darhol o'chirib tashlayman.\n\n"
+        "📦 <b>Fayl hajmi bo'yicha:</b>\n"
+        "• ~1900MB gacha — to'g'ridan-to'g'ri yuboriladi.\n"
+        "• Undan katta — avtomatik qismlarga (part001, part002, ...) bo'linadi, "
+        "va oxirida ularni birlashtirish bo'yicha qo'llanma yuboraman.\n"
+        "• ~2000MB — Telegramning o'z chegarasi, hech qanday usul bilan chetlab "
+        "o'tib bo'lmaydi.\n\n"
+        "🕹 <b>Buyruqlar:</b>\n"
+        "/start yoki /help — shu qo'llanma\n"
+        "/status — hozir faol (yuklanayotgan) torrentlar ro'yxati, foizi bilan\n"
+        "/fayllar — xatolik tufayli yuborilmay serverda qolib ketgan fayllar "
+        "ro'yxati — har birini alohida qayta yuborish yoki o'chirish mumkin\n"
+        "/skip — nom tozalash so'roviga javob bermasdan davom etish\n\n"
+        "🗑 Fayl 12 soat davomida yuborilmasa/o'chirilmasa, server uni o'zi "
+        "avtomatik tozalaydi."
+    )
+    if chat_id in config.ADMIN_CHAT_IDS:
+        text += (
+            "\n\n👑 <b>Admin buyruqlari:</b>\n"
+            "/clearall — BARCHA foydalanuvchilarning serverda saqlangan "
+            "fayllarini o'chirish (tasdiqlash so'raladi)"
+        )
+    return text
 
 
 def _manager(context: ContextTypes.DEFAULT_TYPE) -> DownloadManager:
@@ -41,11 +69,11 @@ def _keyboard(job_id):
 
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(WELCOME)
+    await update.message.reply_text(_build_welcome_text(update.effective_chat.id), parse_mode=ParseMode.HTML)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(WELCOME)
+    await update.message.reply_text(_build_welcome_text(update.effective_chat.id), parse_mode=ParseMode.HTML)
 
 
 async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
