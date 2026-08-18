@@ -38,7 +38,10 @@ def format_progress(status, action_label=None):
 
 
 def format_upload_progress(name, done, total):
-    if not total:
+    # done<=0 — hali birorta ham real progress signali kelmagan (masalan
+    # to'g'ridan-to'g'ri Bot API yuklashda buni umuman bermaydi). Soxta 0%
+    # ko'rsatish o'rniga halol "Yuborilmoqda..." holatini chiqaramiz.
+    if not total or done <= 0:
         return f"⬆️ <b>{name}</b>\nYuborilmoqda..."
     percent = done / total * 100
     return "\n".join([
@@ -46,6 +49,10 @@ def format_upload_progress(name, done, total):
         f"{bar(percent)} {percent:.1f}%",
         f"{human_size(done)} / {human_size(total)}",
     ])
+
+
+def format_upload_done(name):
+    return f"✅ <b>{name}</b> yuborildi."
 
 
 def format_done(status):

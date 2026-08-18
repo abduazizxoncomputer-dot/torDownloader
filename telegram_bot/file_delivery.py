@@ -7,7 +7,7 @@ from telegram.constants import ParseMode
 from telegram.error import BadRequest
 
 from telegram_bot import config, userbot
-from telegram_bot.progress import format_upload_progress
+from telegram_bot.progress import format_upload_done, format_upload_progress
 
 logger = logging.getLogger(__name__)
 
@@ -47,14 +47,22 @@ class UploadProgressReporter:
         if total:
             self._current_total = total
 
-    def finish_file(self):
+    async def finish_file(self):
+        name = self._current_name or 'Fayl'
         self._sent_bytes += self._current_total
         self._current_done = 0
         self._current_total = 0
+        # Direct Bot API sends never report live progress (see class
+        # docstring), so without this the message would stay frozen on its
+        # last "Yuborilmoqda..." text forever even though the file is done.
+        await self._edit(format_upload_done(name))
 
     async def _render(self):
         done = self._sent_bytes + self._current_done
         text = format_upload_progress(self._current_name or 'Fayl', done, self._total_bytes)
+        await self._edit(text)
+
+    async def _edit(self, text):
         if text == self._last_text:
             return
         self._last_text = text
@@ -190,7 +198,7 @@ async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporte
 
     if size <= config.BOT_UPLOAD_LIMIT_BYTES:
         await _send_one(bot, chat_id, path, caption=_build_caption(path.name, title_strip=title_strip))
-        reporter.finish_file()
+        await reporter.finish_file()
         return
 
     if userbot.is_enabled() and size <= config.USERBOT_UPLOAD_LIMIT_BYTES:
@@ -200,7 +208,7 @@ async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporte
             caption=_build_caption(path.name, title_strip=title_strip),
             progress=reporter.report,
         )
-        reporter.finish_file()
+        await reporter.finish_file()
         return
 
     logger.info("Splitting %s (%.1f MB) into %d MB chunks", path, size / 1024 / 1024, config.CHUNK_SIZE_MB)
@@ -210,7 +218,7 @@ async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporte
         caption = _build_caption(path.name, part_label=f"qism {i}/{len(parts)}", title_strip=title_strip)
         reporter.begin_file(f"{path.name} ({i}/{len(parts)})", part.stat().st_size)
         await _send_one(bot, chat_id, part, caption=caption)
-        reporter.finish_file()
+        await reporter.finish_file()
         part.unlink(missing_ok=True)
 
     await bot.send_message(
