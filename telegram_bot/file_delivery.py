@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from telegram.constants import ParseMode
-from telegram.error import BadRequest
+from telegram.error import BadRequest, RetryAfter
 
 from telegram_bot import config, userbot
 from telegram_bot.progress import format_upload_done, format_upload_progress
@@ -12,6 +12,35 @@ from telegram_bot.progress import format_upload_done, format_upload_progress
 logger = logging.getLogger(__name__)
 
 _UPLOAD_TIMEOUTS = dict(read_timeout=600, write_timeout=600, connect_timeout=60, pool_timeout=60)
+
+_RETRY_AFTER_PATTERN = re.compile(r'retry after (\d+)', re.IGNORECASE)
+
+# Ketma-ket fayl yuborishlar orasidagi kichik pauza — Telegramning
+# chat-darajasidagi flood-limitiga (~1 xabar/soniya) tegib qolish ehtimolini
+# kamaytiradi. _with_flood_retry bu limitga baribir tegib qolgan holatni
+# qamrab oladi.
+INTER_FILE_DELAY_SECONDS = 1.5
+
+
+async def with_flood_retry(make_coro, max_retries=3):
+    """`make_coro` (argumentsiz, har chaqirilganda YANGI coroutine qaytaradigan
+    callable) ni bajaradi; Telegramning flood-limiti (RetryAfter, yoki matnida
+    'retry after N' bo'lgan BadRequest) tegib qolsa, ko'rsatilgan vaqtcha kutib
+    avtomatik qayta urinadi."""
+    for attempt in range(max_retries + 1):
+        try:
+            return await make_coro()
+        except RetryAfter as exc:
+            wait_s = exc.retry_after
+        except BadRequest as exc:
+            match = _RETRY_AFTER_PATTERN.search(str(exc))
+            if not match:
+                raise
+            wait_s = int(match.group(1))
+        if attempt == max_retries:
+            raise
+        logger.warning("Flood-limitga tegildi, %ss kutilmoqda (urinish %d/%d)", wait_s, attempt + 1, max_retries)
+        await asyncio.sleep(wait_s + 1)
 
 
 class UploadProgressReporter:
@@ -182,15 +211,17 @@ def _join_instructions(original_name, part_names):
 
 
 async def _send_one(bot, chat_id, path: Path, caption=None):
-    with open(path, 'rb') as fh:
-        await bot.send_document(
-            chat_id=chat_id,
-            document=fh,
-            filename=path.name,
-            caption=caption,
-            parse_mode=ParseMode.HTML if caption else None,
-            **_UPLOAD_TIMEOUTS,
-        )
+    async def attempt():
+        with open(path, 'rb') as fh:
+            await bot.send_document(
+                chat_id=chat_id,
+                document=fh,
+                filename=path.name,
+                caption=caption,
+                parse_mode=ParseMode.HTML if caption else None,
+                **_UPLOAD_TIMEOUTS,
+            )
+    await with_flood_retry(attempt)
 
 
 async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporter, title_strip=None):

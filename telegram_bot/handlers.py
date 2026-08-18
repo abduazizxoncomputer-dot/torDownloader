@@ -9,7 +9,7 @@ from telegram.error import BadRequest, TelegramError
 from telegram.ext import ContextTypes
 
 from telegram_bot import config
-from telegram_bot.file_delivery import deliver_single_file, find_downloaded_files
+from telegram_bot.file_delivery import INTER_FILE_DELAY_SECONDS, deliver_single_file, find_downloaded_files, with_flood_retry
 from telegram_bot.jobs import DownloadManager
 from telegram_bot.progress import format_done, format_error, format_progress, human_size
 from telegram_bot.runner import run_job_sync
@@ -413,53 +413,73 @@ async def _safe_edit_message(bot, chat_id, message_id, text, **kwargs):
         logger.warning("Failed to edit message %s in chat %s: %s", message_id, chat_id, exc)
 
 
+async def _notify_safely(bot, chat_id, text):
+    """Xabar yuborishda ham flood-limitga tegib qolsa avtomatik kutib qayta
+    urinadi; oxir-oqibat baribir muvaffaqiyatsiz bo'lsa, faqat log yozadi —
+    bu xabar (masalan xatolik haqida) yuqoridagi asosiy oqimni to'xtatib
+    qo'ymasligi kerak."""
+    async def attempt():
+        await bot.send_message(chat_id=chat_id, text=text)
+    try:
+        await with_flood_retry(attempt)
+    except TelegramError:
+        logger.exception("Failed to notify chat %s", chat_id)
+
+
 async def _process_job(bot, manager, job):
-    async with manager.semaphore:
-        try:
-            await bot.edit_message_text(chat_id=job.chat_id, message_id=job.message_id, text="⏳ Boshlanmoqda...")
-        except BadRequest:
-            pass
+    try:
+        async with manager.semaphore:
+            try:
+                await bot.edit_message_text(chat_id=job.chat_id, message_id=job.message_id, text="⏳ Boshlanmoqda...")
+            except BadRequest:
+                pass
 
-        ticker = asyncio.create_task(_progress_ticker(bot, job))
-        await asyncio.to_thread(run_job_sync, job)
-        job.done = True
-        try:
-            await ticker
-        except Exception:
-            logger.exception("Progress ticker crashed for job %s", job.job_id)
+            ticker = asyncio.create_task(_progress_ticker(bot, job))
+            await asyncio.to_thread(run_job_sync, job)
+            job.done = True
+            try:
+                await ticker
+            except Exception:
+                logger.exception("Progress ticker crashed for job %s", job.job_id)
 
-        try:
-            if job.stopped:
-                await _safe_edit_message(
-                    bot, job.chat_id, job.message_id, "⏹ Yuklab olish bekor qilindi."
-                )
-            elif job.error:
-                await _safe_edit_message(
-                    bot, job.chat_id, job.message_id,
-                    format_error(job.status.get('name', 'Torrent'), job.error),
-                    parse_mode=ParseMode.HTML,
-                )
-            else:
-                await _safe_edit_message(
-                    bot, job.chat_id, job.message_id, format_done(job.status), parse_mode=ParseMode.HTML,
-                )
-                files = find_downloaded_files(job.save_path)
-                if not files:
-                    raise RuntimeError("Yuklangan fayllar topilmadi.")
-                title_strip = await _ask_title_strip(bot, job.chat_id, files[0].name)
-                for file_path in files:
-                    await deliver_single_file(bot, job.chat_id, job.message_id, file_path, title_strip=title_strip)
-                if not config.KEEP_FILES_AFTER_SEND:
-                    shutil.rmtree(job.save_path, ignore_errors=True)
-                await bot.send_message(
-                    chat_id=job.chat_id,
-                    text=f"📦 {job.status.get('name', 'Torrent')} — barcha fayllar yuborildi.",
-                )
-        except Exception as exc:
-            logger.exception("Failed to finalize job %s", job.job_id)
-            await bot.send_message(chat_id=job.chat_id, text=f"❌ Xatolik: {exc}")
-
-    manager.remove_job(job.job_id)
+            try:
+                if job.stopped:
+                    await _safe_edit_message(
+                        bot, job.chat_id, job.message_id, "⏹ Yuklab olish bekor qilindi."
+                    )
+                elif job.error:
+                    await _safe_edit_message(
+                        bot, job.chat_id, job.message_id,
+                        format_error(job.status.get('name', 'Torrent'), job.error),
+                        parse_mode=ParseMode.HTML,
+                    )
+                else:
+                    await _safe_edit_message(
+                        bot, job.chat_id, job.message_id, format_done(job.status), parse_mode=ParseMode.HTML,
+                    )
+                    files = find_downloaded_files(job.save_path)
+                    if not files:
+                        raise RuntimeError("Yuklangan fayllar topilmadi.")
+                    title_strip = await _ask_title_strip(bot, job.chat_id, files[0].name)
+                    for i, file_path in enumerate(files):
+                        if i > 0:
+                            await asyncio.sleep(INTER_FILE_DELAY_SECONDS)
+                        await deliver_single_file(
+                            bot, job.chat_id, job.message_id, file_path, title_strip=title_strip
+                        )
+                    if not config.KEEP_FILES_AFTER_SEND:
+                        shutil.rmtree(job.save_path, ignore_errors=True)
+                    await _notify_safely(
+                        bot, job.chat_id, f"📦 {job.status.get('name', 'Torrent')} — barcha fayllar yuborildi."
+                    )
+            except Exception as exc:
+                logger.exception("Failed to finalize job %s", job.job_id)
+                await _notify_safely(bot, job.chat_id, f"❌ Xatolik: {exc}")
+    finally:
+        # Nima bo'lishidan qat'iy nazar (hatto flood-limit tufayli xatolik
+        # xabari ham yuborilmasa) — job doim "faol"lar ro'yxatidan chiqarilishi
+        # kerak, aks holda uning fayllari /fayllar'da abadiy ko'rinmay qoladi.
+        manager.remove_job(job.job_id)
 
 
 async def _refresh_files_list_message(query, context, chat_id):
@@ -537,15 +557,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             await query.answer("Hamma fayllar yuborilmoqda...")
             title_strip = await _ask_title_strip(context.bot, chat_id, all_files[0].name) if all_files else None
-            for file_path in all_files:
+            for i, file_path in enumerate(all_files):
+                if i > 0:
+                    await asyncio.sleep(INTER_FILE_DELAY_SECONDS)
                 await deliver_single_file(
                     context.bot, chat_id, query.message.message_id, file_path, title_strip=title_strip
                 )
             if all_files:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=f"📦 {len(all_files)} ta fayl yuborildi.",
-                )
+                await _notify_safely(context.bot, chat_id, f"📦 {len(all_files)} ta fayl yuborildi.")
         else:
             job_id, _, index_str = payload.partition(':')
             file_path = _resolve_file(chat_dir, job_id, index_str)
