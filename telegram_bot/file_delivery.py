@@ -37,10 +37,16 @@ class UploadProgressReporter:
         self._last_text = None
         self._task = None
 
-    def begin_file(self, name, size):
+    async def begin_file(self, name, size):
         self._current_name = name
         self._current_total = size
         self._current_done = 0
+        # Awaited directly (not left to the background ticker) so the
+        # "Yuborilmoqda..." status is guaranteed to post before the upload
+        # itself starts. PTB reads the whole file into memory synchronously
+        # before its first real network await, which can starve the ticker
+        # task of a chance to run before a fast/local upload already finishes.
+        await self._render()
 
     def report(self, current, total=None):
         self._current_done = current
@@ -78,11 +84,6 @@ class UploadProgressReporter:
                 logger.warning("Failed to edit upload progress message: %s", exc)
 
     async def _tick(self):
-        # Bot API katta fayllarni bittada yuboradi (oraliq progress callback
-        # bermaydi) — agar fayl navbatdagi 4 soniyalik tikdan oldin tugab
-        # ketsa, foydalanuvchi hech qanday progress ko'rmay qoladi. Shuning
-        # uchun har bir fayl boshlanishi bilanoq darhol bir marta chizamiz.
-        await self._render()
         while True:
             await asyncio.sleep(self._interval)
             await self._render()
@@ -194,7 +195,7 @@ async def _send_one(bot, chat_id, path: Path, caption=None):
 
 async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporter, title_strip=None):
     size = path.stat().st_size
-    reporter.begin_file(path.name, size)
+    await reporter.begin_file(path.name, size)
 
     if size <= config.BOT_UPLOAD_LIMIT_BYTES:
         await _send_one(bot, chat_id, path, caption=_build_caption(path.name, title_strip=title_strip))
@@ -216,7 +217,7 @@ async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporte
     part_names = [p.name for p in parts]
     for i, part in enumerate(parts, start=1):
         caption = _build_caption(path.name, part_label=f"qism {i}/{len(parts)}", title_strip=title_strip)
-        reporter.begin_file(f"{path.name} ({i}/{len(parts)})", part.stat().st_size)
+        await reporter.begin_file(f"{path.name} ({i}/{len(parts)})", part.stat().st_size)
         await _send_one(bot, chat_id, part, caption=caption)
         await reporter.finish_file()
         part.unlink(missing_ok=True)
