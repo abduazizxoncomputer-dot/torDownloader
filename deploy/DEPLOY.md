@@ -131,6 +131,59 @@ ufw enable
 (Diapazonni o'zingizdagi `BASE_PORT` va `PORT_POOL_SIZE` qiymatlariga
 moslashtiring: `BASE_PORT` dan `BASE_PORT + PORT_POOL_SIZE - 1` gacha.)
 
+## 10. Local Bot API Server (ixtiyoriy — 45MB'dan katta fayllarni shaxsiy
+akkount ishlatmasdan yuborish uchun)
+
+Docker o'rnating:
+
+```sh
+curl -fsSL https://get.docker.com | sh
+```
+
+Konteynerni **host va konteyner ichida bir xil yo'l bilan** ishga tushiring —
+bu muhim, aks holda bot fayllarni to'g'ridan-to'g'ri diskdan o'qiy olmaydi
+(pastga qarang):
+
+```sh
+docker run -d \
+  --name telegram-bot-api \
+  --restart unless-stopped \
+  -p 127.0.0.1:8081:8081 \
+  -v /var/lib/telegram-bot-api:/var/lib/telegram-bot-api \
+  -e TELEGRAM_API_ID="<my.telegram.org dan API_ID>" \
+  -e TELEGRAM_API_HASH="<my.telegram.org dan API_HASH>" \
+  -e TELEGRAM_LOCAL=1 \
+  aiogram/telegram-bot-api:latest
+```
+
+`.env`ga qo'shing:
+
+```
+LOCAL_BOT_API_BASE_URL=http://127.0.0.1:8081/bot
+```
+
+**`LOCAL_BOT_API_BASE_FILE_URL`ni SOZLAMANG** — local (`--local`) rejimda
+server `getFile`ga javoban to'g'ridan-to'g'ri diskdagi absolyut yo'lni
+qaytaradi, va `base_file_url` sozlansa, python-telegram-bot bu yo'lni
+(noto'g'ri) URL bilan qo'shib, buzuq manzil hosil qiladi (`InvalidToken: Not
+Found` xatosi bilan chiqadi). `base_file_url` sozlanmasa, bot faylni
+to'g'ridan-to'g'ri diskdan nusxalaydi — tezroq va ishonchli.
+
+**Muhim — ruxsatlar:** konteyner fayllarni Docker daemon boshqargan
+foydalanuvchi nomidan (odatda tasodifiy UID, bu serverda `messagebus`
+guruhiga to'g'ri kelgan) yozadi. `utubebot` bu fayllarni o'qiy olishi uchun
+uni o'sha guruhga qo'shing (guruh nomi boshqacha bo'lishi mumkin — `ls -la
+/var/lib/telegram-bot-api/` orqali tekshiring):
+
+```sh
+usermod -aG messagebus utubebot
+systemctl restart utube-bot
+```
+
+Agar bu qadam o'tkazib yuborilsa, `.torrent` fayl yuborilganda (magnet-link
+emas — u fayl yuklab olishni talab qilmaydi) botda hech qanday javob
+chiqmaydi, log'da esa `telegram.error.InvalidToken: Not Found` ko'rinadi.
+
 ## Yangilash (keyingi deploylar)
 
 Kodda o'zgarish qilganingizdan so'ng, mahalliy kompyuteringizda 3-bosqichdagi
