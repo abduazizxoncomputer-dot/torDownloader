@@ -199,14 +199,14 @@ def _join_instructions(original_name, part_names):
     windows_cmd = "copy /b " + "+".join(part_names) + f" \"{original_name}\""
     unix_cmd = "cat " + " ".join(f'"{p}"' for p in part_names) + f' > "{original_name}"'
     return (
-        f"🧩 <b>{original_name}</b> — {len(part_names)} qismga bo'lindi.\n\n"
-        "Bitta faylga birlashtirish uchun:\n\n"
-        "1️⃣ Yuqoridagi barcha qismlarni (part001, part002, ...) yuklab oling.\n"
-        "2️⃣ Hammasini bitta papkaga joylang.\n"
-        "3️⃣ Shu papkada terminal/buyruqlar satrini ochib, quyidagini bajaring:\n\n"
+        f"🧩 <b>{original_name}</b> — split into {len(part_names)} parts.\n\n"
+        "To join them back into one file:\n\n"
+        "1️⃣ Download all the parts above (part001, part002, ...).\n"
+        "2️⃣ Put them all in the same folder.\n"
+        "3️⃣ Open a terminal/command prompt in that folder and run:\n\n"
         f"🪟 <b>Windows</b> (cmd / PowerShell):\n<code>{windows_cmd}</code>\n\n"
         f"🐧 <b>Linux / macOS</b> (terminal):\n<code>{unix_cmd}</code>\n\n"
-        f"✅ Natijada <b>{original_name}</b> nomli, asl videoning o'zi paydo bo'ladi."
+        f"✅ The result will be <b>{original_name}</b> — the original video file."
     )
 
 
@@ -247,7 +247,7 @@ async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporte
     parts = split_file(path, config.CHUNK_SIZE_BYTES)
     part_names = [p.name for p in parts]
     for i, part in enumerate(parts, start=1):
-        caption = _build_caption(path.name, part_label=f"qism {i}/{len(parts)}", title_strip=title_strip)
+        caption = _build_caption(path.name, part_label=f"part {i}/{len(parts)}", title_strip=title_strip)
         await reporter.begin_file(f"{path.name} ({i}/{len(parts)})", part.stat().st_size)
         await _send_one(bot, chat_id, part, caption=caption)
         await reporter.finish_file()

@@ -20,31 +20,30 @@ logger = logging.getLogger(__name__)
 _pending_title_prompts: dict = {}
 
 WELCOME = (
-    "🎬 <b>Salom! Men torrent yuklab beruvchi botman.</b>\n\n"
-    "📥 <b>Qanday ishlayman:</b>\n"
-    "1️⃣ Menga magnet-link yoki <code>.torrent</code> fayl yuboring.\n"
-    "2️⃣ Torrentni serverga yuklab olaman — progress-bar bilan kuzatib turasiz "
-    "(⏸ Pauza / ▶️ Davom / ⏹ To'xtatish tugmalari mavjud).\n"
-    "3️⃣ Yuklab bo'lgach, fayl nomidan olib tashlanadigan keraksiz qismni "
-    "(masalan <code>720p.HDTV.x264-HWE</code>) so'rayman — javobingiz bir nechta "
-    "qism (epizod) bo'lsa, barchasiga qayta so'ramasdan qo'llanadi. "
-    "O'zgartirmasdan davom etish uchun /skip yuboring.\n"
-    "4️⃣ Har bir faylni sizga alohida, o'z progress-bari bilan yuboraman va "
-    "muvaffaqiyatli yetkazilgach serverdan darhol o'chirib tashlayman.\n\n"
-    "📦 <b>Fayl hajmi bo'yicha:</b>\n"
-    "• ~1900MB gacha — to'g'ridan-to'g'ri yuboriladi.\n"
-    "• Undan katta — avtomatik qismlarga (part001, part002, ...) bo'linadi, "
-    "va oxirida ularni birlashtirish bo'yicha qo'llanma yuboraman.\n"
-    "• ~2000MB — Telegramning o'z chegarasi, hech qanday usul bilan chetlab "
-    "o'tib bo'lmaydi.\n\n"
-    "🕹 <b>Buyruqlar:</b>\n"
-    "/start yoki /help — shu qo'llanma\n"
-    "/status — hozir faol (yuklanayotgan) torrentlar ro'yxati, foizi bilan\n"
-    "/fayllar — xatolik tufayli yuborilmay serverda qolib ketgan fayllar "
-    "ro'yxati — har birini alohida qayta yuborish yoki o'chirish mumkin\n"
-    "/skip — nom tozalash so'roviga javob bermasdan davom etish\n\n"
-    "🗑 Fayl 12 soat davomida yuborilmasa/o'chirilmasa, server uni o'zi "
-    "avtomatik tozalaydi."
+    "🎬 <b>Hello! I'm a torrent download bot.</b>\n\n"
+    "📥 <b>How I work:</b>\n"
+    "1️⃣ Send me a magnet link or a <code>.torrent</code> file.\n"
+    "2️⃣ I'll download the torrent to the server — you'll see a progress bar "
+    "(⏸ Pause / ▶️ Resume / ⏹ Stop buttons are available).\n"
+    "3️⃣ Once it's downloaded, I'll ask what unwanted part to remove from the "
+    "file name (e.g. <code>720p.HDTV.x264-HWE</code>) — if your reply covers "
+    "several parts (episodes), it's applied to all of them without asking again. "
+    "Send /skip to continue without changing the name.\n"
+    "4️⃣ I'll send you each file separately with its own progress bar, and "
+    "delete it from the server right after it's successfully delivered.\n\n"
+    "📦 <b>About file size:</b>\n"
+    "• Up to ~1900MB — sent directly.\n"
+    "• Larger — automatically split into parts (part001, part002, ...), and "
+    "I'll send instructions for joining them back together at the end.\n"
+    "• ~2000MB is Telegram's own limit — it can't be bypassed by any method.\n\n"
+    "🕹 <b>Commands:</b>\n"
+    "/start or /help — this guide\n"
+    "/status — list of currently active (downloading) torrents, with progress\n"
+    "/fayllar — list of files left on the server after a failed delivery — "
+    "each one can be resent or deleted individually\n"
+    "/skip — continue without answering the name-cleanup prompt\n\n"
+    "🗑 If a file isn't sent or deleted within 12 hours, the server "
+    "automatically cleans it up."
 )
 
 
@@ -54,9 +53,9 @@ def _manager(context: ContextTypes.DEFAULT_TYPE) -> DownloadManager:
 
 def _keyboard(job_id):
     return InlineKeyboardMarkup([[
-        InlineKeyboardButton("⏸ Pauza", callback_data=f"pause:{job_id}"),
-        InlineKeyboardButton("▶️ Davom", callback_data=f"resume:{job_id}"),
-        InlineKeyboardButton("⏹ To'xtatish", callback_data=f"stop:{job_id}"),
+        InlineKeyboardButton("⏸ Pause", callback_data=f"pause:{job_id}"),
+        InlineKeyboardButton("▶️ Resume", callback_data=f"resume:{job_id}"),
+        InlineKeyboardButton("⏹ Stop", callback_data=f"stop:{job_id}"),
     ]])
 
 
@@ -72,7 +71,7 @@ async def status_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     manager = _manager(context)
     jobs = manager.jobs_for_chat(update.effective_chat.id)
     if not jobs:
-        await update.message.reply_text("Aktiv yuklashlar yo'q.")
+        await update.message.reply_text("No active downloads.")
         return
 
     lines = []
@@ -128,12 +127,12 @@ def _build_files_list_pages(context: ContextTypes.DEFAULT_TYPE, chat_id):
                 entries.append((folder.name, index, file_path))
 
     if not entries:
-        return [("📁 Serverda saqlangan fayllar yo'q.", None)]
+        return [("📁 No files saved on the server.", None)]
 
     chunks = [entries[i:i + _FILES_PER_PAGE] for i in range(0, len(entries), _FILES_PER_PAGE)]
     pages = []
     for page_num, chunk in enumerate(chunks, start=1):
-        header = "📁 <b>Saqlangan fayllar:</b>"
+        header = "📁 <b>Saved files:</b>"
         if len(chunks) > 1:
             header += f" ({page_num}/{len(chunks)})"
         lines = [header]
@@ -147,8 +146,8 @@ def _build_files_list_pages(context: ContextTypes.DEFAULT_TYPE, chat_id):
             ])
         if page_num == len(chunks):
             buttons.append([
-                InlineKeyboardButton("📤 Hammasini yuborish", callback_data="resend:all"),
-                InlineKeyboardButton("🗑 Hammasini o'chirish", callback_data="delfile:all"),
+                InlineKeyboardButton("📤 Send all", callback_data="resend:all"),
+                InlineKeyboardButton("🗑 Delete all", callback_data="delfile:all"),
             ])
         pages.append(("\n".join(lines), InlineKeyboardMarkup(buttons)))
 
@@ -260,9 +259,9 @@ async def cleanup_stale_files(context: ContextTypes.DEFAULT_TYPE):
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=(
-                        f"🗑 {config.STALE_FILE_HOURS} soatdan beri yuborilmagan/o'chirilmagan "
-                        f"{removed_count} ta fayl ({human_size(removed_bytes)}) serverdan "
-                        "avtomatik o'chirildi."
+                        f"🗑 {removed_count} file(s) ({human_size(removed_bytes)}) that were "
+                        f"not sent/deleted for {config.STALE_FILE_HOURS} hours were "
+                        "automatically removed from the server."
                     ),
                 )
             except Exception:
@@ -274,24 +273,24 @@ async def clearall_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     o'chirish uchun tasdiqlash so'raydi."""
     chat_id = update.effective_chat.id
     if chat_id not in config.ADMIN_CHAT_IDS:
-        await update.message.reply_text("⛔ Bu buyruq faqat admin uchun.")
+        await update.message.reply_text("⛔ This command is for admins only.")
         return
 
     manager = _manager(context)
     count, total_bytes = _scan_deletable_downloads(manager)
     if count == 0:
-        await update.message.reply_text("📁 O'chiriladigan hech narsa yo'q.")
+        await update.message.reply_text("📁 Nothing to delete.")
         return
 
     keyboard = InlineKeyboardMarkup([[
-        InlineKeyboardButton("⚠️ Ha, HAMMASINI o'chir", callback_data="clearall:confirm"),
-        InlineKeyboardButton("Bekor qilish", callback_data="clearall:cancel"),
+        InlineKeyboardButton("⚠️ Yes, delete EVERYTHING", callback_data="clearall:confirm"),
+        InlineKeyboardButton("Cancel", callback_data="clearall:cancel"),
     ]])
     await update.message.reply_text(
-        "⚠️ <b>Diqqat!</b> Bu <b>BARCHA</b> foydalanuvchilarning serverda saqlangan "
-        "fayllarini o'chiradi (faol yuklashlarga tegilmaydi).\n\n"
-        f"📁 {count} ta papka, jami {human_size(total_bytes)}.\n\n"
-        "Rostdan ham davom etaymi?",
+        "⚠️ <b>Warning!</b> This will delete <b>ALL</b> users' files saved on "
+        "the server (active downloads won't be affected).\n\n"
+        f"📁 {count} folder(s), {human_size(total_bytes)} total.\n\n"
+        "Are you sure you want to continue?",
         reply_markup=keyboard,
         parse_mode=ParseMode.HTML,
     )
@@ -317,8 +316,8 @@ async def _start_job(update: Update, context: ContextTypes.DEFAULT_TYPE, source,
 
     if manager.has_active_job(chat_id):
         await update.message.reply_text(
-            "⏳ Sizda allaqachon faol yuklash bor. Yangisini yuborishdan oldin uning "
-            "tugashini kuting (yoki ⏹ To'xtatish tugmasi bilan bekor qiling)."
+            "⏳ You already have an active download. Please wait for it to finish "
+            "before sending a new one (or cancel it with the ⏹ Stop button)."
         )
         return
 
@@ -329,7 +328,7 @@ async def _start_job(update: Update, context: ContextTypes.DEFAULT_TYPE, source,
         return
 
     message = await update.message.reply_text(
-        "🕒 Qabul qilindi, navbatda...", reply_markup=_keyboard(job.job_id)
+        "🕒 Received, queued...", reply_markup=_keyboard(job.job_id)
     )
     job.message_id = message.message_id
     context.application.create_task(_process_job(context.bot, manager, job), update=update)
@@ -348,11 +347,11 @@ async def _ask_title_strip(bot, chat_id, sample_name):
         await bot.send_message(
             chat_id=chat_id,
             text=(
-                "📄 Fayl nomi:\n"
+                "📄 File name:\n"
                 f"<code>{sample_name}</code>\n\n"
-                "Nomdan olib tashlanadigan keraksiz qismni yozib yuboring "
-                "(masalan: <code>720p.HDTV.x264-HWE</code>).\n"
-                "O'zgartirmasdan davom etish uchun /skip yuboring."
+                "Send the unwanted part to remove from the name "
+                "(e.g.: <code>720p.HDTV.x264-HWE</code>).\n"
+                "Send /skip to continue without changes."
             ),
             parse_mode=ParseMode.HTML,
         )
@@ -430,7 +429,7 @@ async def _process_job(bot, manager, job):
     try:
         async with manager.semaphore:
             try:
-                await bot.edit_message_text(chat_id=job.chat_id, message_id=job.message_id, text="⏳ Boshlanmoqda...")
+                await bot.edit_message_text(chat_id=job.chat_id, message_id=job.message_id, text="⏳ Starting...")
             except BadRequest:
                 pass
 
@@ -445,7 +444,7 @@ async def _process_job(bot, manager, job):
             try:
                 if job.stopped:
                     await _safe_edit_message(
-                        bot, job.chat_id, job.message_id, "⏹ Yuklab olish bekor qilindi."
+                        bot, job.chat_id, job.message_id, "⏹ Download cancelled."
                     )
                 elif job.error:
                     await _safe_edit_message(
@@ -459,7 +458,7 @@ async def _process_job(bot, manager, job):
                     )
                     files = find_downloaded_files(job.save_path)
                     if not files:
-                        raise RuntimeError("Yuklangan fayllar topilmadi.")
+                        raise RuntimeError("Downloaded files not found.")
                     title_strip = await _ask_title_strip(bot, job.chat_id, files[0].name)
                     for i, file_path in enumerate(files):
                         if i > 0:
@@ -470,11 +469,11 @@ async def _process_job(bot, manager, job):
                     if not config.KEEP_FILES_AFTER_SEND:
                         shutil.rmtree(job.save_path, ignore_errors=True)
                     await _notify_safely(
-                        bot, job.chat_id, f"📦 {job.status.get('name', 'Torrent')} — barcha fayllar yuborildi."
+                        bot, job.chat_id, f"📦 {job.status.get('name', 'Torrent')} — all files sent."
                     )
             except Exception as exc:
                 logger.exception("Failed to finalize job %s", job.job_id)
-                await _notify_safely(bot, job.chat_id, f"❌ Xatolik: {exc}")
+                await _notify_safely(bot, job.chat_id, f"❌ Error: {exc}")
     finally:
         # Nima bo'lishidan qat'iy nazar (hatto flood-limit tufayli xatolik
         # xabari ham yuborilmasa) — job doim "faol"lar ro'yxatidan chiqarilishi
@@ -486,7 +485,7 @@ async def _refresh_files_list_message(query, context, chat_id):
     pages = _build_files_list_pages(context, chat_id)
     text, keyboard = pages[0]
     if len(pages) > 1:
-        text += f"\n\n… yana {len(pages) - 1} sahifa. To'liq ro'yxat uchun /fayllar yuboring."
+        text += f"\n\n… {len(pages) - 1} more page(s). Send /fayllar for the full list."
     try:
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     except BadRequest as exc:
@@ -501,17 +500,17 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if action == 'clearall':
         chat_id = query.message.chat_id
         if chat_id not in config.ADMIN_CHAT_IDS:
-            await query.answer("⛔ Ruxsat yo'q.", show_alert=True)
+            await query.answer("⛔ No permission.", show_alert=True)
             return
         if payload == 'cancel':
-            await query.answer("Bekor qilindi.")
-            await query.edit_message_text("Bekor qilindi.")
+            await query.answer("Cancelled.")
+            await query.edit_message_text("Cancelled.")
             return
         manager = _manager(context)
         count, total_bytes = _scan_deletable_downloads(manager)
         _wipe_all_downloads(manager)
-        await query.answer("Hammasi o'chirildi.")
-        await query.edit_message_text(f"✅ {count} ta papka o'chirildi, {human_size(total_bytes)} bo'shatildi.")
+        await query.answer("Everything deleted.")
+        await query.edit_message_text(f"✅ {count} folder(s) deleted, {human_size(total_bytes)} freed.")
         return
 
     if action == 'delfile':
@@ -525,19 +524,19 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for folder in chat_dir.iterdir():
                     if folder.is_dir() and folder.name not in active_ids:
                         shutil.rmtree(folder, ignore_errors=True)
-            await query.answer("Hammasi o'chirildi.")
+            await query.answer("Everything deleted.")
         else:
             job_id, _, index_str = payload.partition(':')
             file_path = _resolve_file(chat_dir, job_id, index_str)
             if file_path is None:
-                await query.answer("Bu fayl topilmadi.", show_alert=True)
+                await query.answer("File not found.", show_alert=True)
             else:
                 file_path.unlink(missing_ok=True)
                 try:
                     file_path.parent.rmdir()
                 except OSError:
                     pass
-                await query.answer("O'chirildi.")
+                await query.answer("Deleted.")
 
         await _refresh_files_list_message(query, context, chat_id)
         return
@@ -555,7 +554,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     if folder.is_dir() and folder.name not in active_ids:
                         all_files.extend(find_downloaded_files(folder))
 
-            await query.answer("Hamma fayllar yuborilmoqda...")
+            await query.answer("Sending all files...")
             title_strip = await _ask_title_strip(context.bot, chat_id, all_files[0].name) if all_files else None
             for i, file_path in enumerate(all_files):
                 if i > 0:
@@ -564,14 +563,14 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     context.bot, chat_id, query.message.message_id, file_path, title_strip=title_strip
                 )
             if all_files:
-                await _notify_safely(context.bot, chat_id, f"📦 {len(all_files)} ta fayl yuborildi.")
+                await _notify_safely(context.bot, chat_id, f"📦 {len(all_files)} file(s) sent.")
         else:
             job_id, _, index_str = payload.partition(':')
             file_path = _resolve_file(chat_dir, job_id, index_str)
             if file_path is None:
-                await query.answer("Bu fayl topilmagan.", show_alert=True)
+                await query.answer("File not found.", show_alert=True)
                 return
-            await query.answer("Fayl yuborilmoqda...")
+            await query.answer("Sending file...")
             title_strip = await _ask_title_strip(context.bot, chat_id, file_path.name)
             await deliver_single_file(
                 context.bot, chat_id, query.message.message_id, file_path, title_strip=title_strip
@@ -585,23 +584,23 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     job = manager.get_job(job_id)
 
     if job is None or job.chat_id != query.message.chat_id:
-        await query.answer("Bu yuklash topilmadi yoki allaqachon tugagan.", show_alert=True)
+        await query.answer("This download was not found or has already finished.", show_alert=True)
         return
 
     if job.torrent_downloader is None:
-        await query.answer("Hali boshlanmagan, kuting...", show_alert=True)
+        await query.answer("Not started yet, please wait...", show_alert=True)
         return
 
     if action == 'pause':
         job.torrent_downloader.pause_download()
         job.paused = True
-        await query.answer("Pauza qilindi.")
+        await query.answer("Paused.")
     elif action == 'resume':
         job.torrent_downloader.resume_download()
         job.paused = False
-        await query.answer("Davom ettirildi.")
+        await query.answer("Resumed.")
     elif action == 'stop':
         job.cancel_requested = True
-        await query.answer("To'xtatilmoqda...")
+        await query.answer("Stopping...")
     else:
         await query.answer()
