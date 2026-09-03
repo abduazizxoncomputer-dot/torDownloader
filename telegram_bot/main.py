@@ -1,5 +1,6 @@
 import logging
 
+from telegram import BotCommand, BotCommandScopeChat
 from telegram.ext import Application, ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
 from telegram_bot import config, handlers, userbot
@@ -7,8 +8,30 @@ from telegram_bot.jobs import DownloadManager
 
 logger = logging.getLogger(__name__)
 
+# Shown in Telegram's "Menu" button for every user.
+_PUBLIC_COMMANDS = [
+    BotCommand("start", "Show the usage guide"),
+    BotCommand("help", "Show the usage guide"),
+    BotCommand("status", "List currently active downloads"),
+    BotCommand("files", "List files pending delivery on the server"),
+    BotCommand("skip", "Skip the filename cleanup prompt"),
+]
+
+# Extra commands shown only in the Menu of chats listed in ADMIN_CHAT_IDS.
+_ADMIN_COMMANDS = _PUBLIC_COMMANDS + [
+    BotCommand("clearall", "Admin: delete all users' files on the server"),
+]
+
 
 async def _on_startup(application: Application):
+    await application.bot.set_my_commands(_PUBLIC_COMMANDS)
+    for admin_id in config.ADMIN_CHAT_IDS:
+        try:
+            await application.bot.set_my_commands(
+                _ADMIN_COMMANDS, scope=BotCommandScopeChat(chat_id=admin_id)
+            )
+        except Exception:
+            logger.exception("Failed to set admin command menu for chat %s", admin_id)
     await userbot.start()
 
 
@@ -52,7 +75,7 @@ def build_application():
     application.add_handler(CommandHandler('start', handlers.start_command))
     application.add_handler(CommandHandler('help', handlers.help_command))
     application.add_handler(CommandHandler('status', handlers.status_command))
-    application.add_handler(CommandHandler('fayllar', handlers.files_command))
+    application.add_handler(CommandHandler('files', handlers.files_command))
     application.add_handler(CommandHandler('skip', handlers.title_strip_skip))
     application.add_handler(CommandHandler('clearall', handlers.clearall_command))
     application.add_handler(MessageHandler(filters.Regex(r'(?i)^magnet:'), handlers.magnet_handler))

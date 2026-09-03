@@ -39,7 +39,7 @@ WELCOME = (
     "🕹 <b>Commands:</b>\n"
     "/start or /help — this guide\n"
     "/status — list of currently active (downloading) torrents, with progress\n"
-    "/fayllar — list of files left on the server after a failed delivery — "
+    "/files — list of files left on the server after a failed delivery — "
     "each one can be resent or deleted individually\n"
     "/skip — continue without answering the name-cleanup prompt\n\n"
     "🗑 If a file isn't sent or deleted within 12 hours, the server "
@@ -477,7 +477,7 @@ async def _process_job(bot, manager, job):
     finally:
         # Nima bo'lishidan qat'iy nazar (hatto flood-limit tufayli xatolik
         # xabari ham yuborilmasa) — job doim "faol"lar ro'yxatidan chiqarilishi
-        # kerak, aks holda uning fayllari /fayllar'da abadiy ko'rinmay qoladi.
+        # kerak, aks holda uning fayllari /files'da abadiy ko'rinmay qoladi.
         manager.remove_job(job.job_id)
 
 
@@ -485,7 +485,7 @@ async def _refresh_files_list_message(query, context, chat_id):
     pages = _build_files_list_pages(context, chat_id)
     text, keyboard = pages[0]
     if len(pages) > 1:
-        text += f"\n\n… {len(pages) - 1} more page(s). Send /fayllar for the full list."
+        text += f"\n\n… {len(pages) - 1} more page(s). Send /files for the full list."
     try:
         await query.edit_message_text(text, reply_markup=keyboard, parse_mode=ParseMode.HTML)
     except BadRequest as exc:

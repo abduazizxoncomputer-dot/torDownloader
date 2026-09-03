@@ -188,6 +188,7 @@ def _build_caption(filename, part_label=None, title_strip=None):
     title = _extract_title(filename, strip_text=title_strip)
     if part_label:
         title = f"{title} — {part_label}"
+    title = title.upper()
     return (
         f"<b>{title}</b>\n\n"
         f"<b>Telegram bot to order movie</b>\n@orderMovies_bot\n\n"
@@ -262,7 +263,7 @@ async def deliver_file(bot, chat_id, path: Path, reporter: UploadProgressReporte
 
 async def deliver_single_file(bot, chat_id, message_id, path: Path, title_strip=None):
     """Bitta faylni yuboradi va muvaffaqiyatli yetkazilgach uni (va endi
-    bo'sh qolgan job papkasini) serverdan o'chiradi — /fayllar ro'yxatidan
+    bo'sh qolgan job papkasini) serverdan o'chiradi — /files ro'yxatidan
     bitta faylni tanlab qayta yuborishda ishlatiladi."""
     size = path.stat().st_size
     reporter = UploadProgressReporter(bot, chat_id, message_id, size)
